@@ -29,9 +29,9 @@
 				<form role="form">
 					<div class="form-group">
 						<textarea class="form-control" rows="3" ng-model="comment.content"></textarea>
-						<input type="hidden" value="{{blog.id}}" ng-model="comment.blogId"></input>
+						<input type="hidden" value="{{blog._id}}" ng-model="comment.blogId"></input>
 					</div>
-					<button type="submit" class="btn btn-primary" ng-click="submitComment(comment, blog.id )">Submit</button>
+					<button type="submit" class="btn btn-primary" ng-click="submitComment(comment, blog._id )">Submit</button>
 				</form>
 			</div>
 			<hr>

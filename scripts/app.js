@@ -3,9 +3,16 @@
 (function($) {
 	//Setup dependencies for the module
 	var app = angular.module('mysocial', [ 'ngRoute','textAngular','ngWebsocket', 'ngCookies' ]);
-	app.run(function($http,$rootScope,$location,$log,$websocket, $cookies) {
+	app.run(function($http,$rootScope,$location,$log,$websocket, $cookies, $location) {
 		$log.debug("App run...");
 		$rootScope.currentPath = $location.path();
+		/*var isUserLoggedIn = $cookies.get('isUserLoggedIn');
+		if($rootScope.currentPath !== '/login' || $rootScope.currentPath !== '/register') {
+		if(!isUserLoggedIn) {
+			$location.path('/login');
+		}
+	}
+	*/
 	});
 
 	//ROUTE configurations for all views
@@ -51,7 +58,8 @@
 
     var data = {
         firstName: '',
-        lastName: ''
+        lastName: '',
+        id: ''
     };
 
     return {
@@ -60,6 +68,13 @@
         },
         setFirstName: function (firstName) {
             data.FirstName = firstName;
+        },
+
+        getId: function () {
+            return data.id;
+        },
+        setId: function (id) {
+            data.id = id;
         },
         
         getLastName: function () {
@@ -81,7 +96,6 @@
 		$http.get('http://localhost:8084/Services/rest/blogs').success(
 				function(data, status, headers, config) {
 					$scope.blogs = data;
-					console.log(data);
 					$scope.loading = false;
 				}).error(function(data, status, headers, config) {
 					$scope.loading = false;
@@ -92,10 +106,13 @@
 			function(data, status, headers, config) {
 				$scope.connectedUsers = data;
 				console.log(data);
+				$cookies.put('isUserLoggedIn', true);
+				$cookies.put('userName', data.userName);
 				$scope.userName = data.userName;
 				$scope.userFirst = data.first;
 				$scope.userLast = data.last;
 				UserData.setFirstName($scope.userFirst);
+				UserData.setId(data._id);
 				UserData.setLastName($scope.userLast);
 
 				$scope.loading = false;
@@ -158,15 +175,20 @@
 					});
 				};
 			$scope.submitComment = function(comment, blogId){
-				$log.debug(comment);
 				//var blogId = comment.blogId;
-				$http.post('/Services/rest/blogs/'+blogId+'/comments',comment).success(
+				$scope.comment = {};
+				$scope.comment.content = comment.content;
+				$scope.comment.userFirst = UserData.getFirstName();
+				$scope.comment.userLast = UserData.getLastName();
+				$scope.comment.date = new Date();
+				console.log($scope.comment);
+				$http.post('http://localhost:8084/Services/rest/blogs/'+ blogId +'/comments', $scope.comment).success(
 					function(data, status, headers, config) {
 						$scope.loading = false;
 						for(var index in $scope.blogs){
-							if($scope.blogs[index].id==blogId){
+							if($scope.blogs[index]._id==blogId){
 								$log.debug("Pushing the added comment to list");
-								$scope.blogs[index].comments.push(comment);
+								$scope.blogs[index].comments.push($scope.comment);
 								break;
 							}
 						}
@@ -275,7 +297,7 @@
 			    $scope.data = UserData.data;
 				$scope.blog.userFirst = UserData.getFirstName();
 				$scope.blog.userLast = UserData.getLastName();
-
+				$scope.blog.userId = UserData.getId();
 				$scope.blog.date = new Date();
 				$scope.blog.content = 'Blog text here...';
 				$scope.saveBlog = function(blog){
