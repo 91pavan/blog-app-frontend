@@ -6,6 +6,24 @@
 	app.run(function($http,$rootScope,$location,$log,$websocket, $cookies, $location) {
 		$log.debug("App run...");
 		$rootScope.currentPath = $location.path();
+
+		// keep user logged in after page refresh
+        var user_authdata = $cookies.get('user_authdata');
+        var userName = $cookies.get('userName');
+        if (user_authdata) {
+            $http.defaults.headers.common['Authorization'] = 'Basic ' + user_authdata; // jshint ignore:line
+        }
+ 		
+        $rootScope.$on('$locationChangeStart', function (event, next, current) {
+            // redirect to login page if not logged in
+            var user_authdata = $cookies.get('user_authdata');
+            var userName = $cookies.get('userName');
+            console.log($http.defaults.headers.common.Authorization);
+            if ($location.path() !== '/login' && $location.path() !== '/register' && !user_authdata && !userName) {
+                $location.path('/login');
+            }
+        });
+		// $http.defaults.headers.common.Authorization = 'Basic ' + 'pavan:pavan123';
 		/*var isUserLoggedIn = $cookies.get('isUserLoggedIn');
 		if($rootScope.currentPath !== '/login' || $rootScope.currentPath !== '/register') {
 		if(!isUserLoggedIn) {
@@ -29,8 +47,11 @@
 		}).when('/newPost', {
 			templateUrl : 'templates/BlogEdit.html',
 			controller : 'BlogController'
+		}).when('/logout', {
+			templateUrl : 'templates/logout.html',
+			controller : 'LoginController'
 		}).otherwise({
-			templateUrl : '/404.html'
+			templateUrl : '/login'
 		});
 	} ]).factory('authHttpResponseInterceptor',
 			[ '$q', '$location','$log', function($q, $location, $log) {
@@ -53,44 +74,11 @@
 		// Http Intercpetor to check auth failures for xhr requests
 		$httpProvider.interceptors.push('authHttpResponseInterceptor');
 	} ]);
-
-	app.factory('UserData', function () {
-
-    var data = {
-        firstName: '',
-        lastName: '',
-        id: ''
-    };
-
-    return {
-        getFirstName: function () {
-            return data.FirstName;
-        },
-        setFirstName: function (firstName) {
-            data.FirstName = firstName;
-        },
-
-        getId: function () {
-            return data.id;
-        },
-        setId: function (id) {
-            data.id = id;
-        },
-        
-        getLastName: function () {
-            return data.lastName;
-        },
-        setLastName: function (lastName) {
-            data.lastName = lastName;
-        }
-
-    };
-});
 	//------------------------------------------------------------------------------------------------------------------
 	// Controller for the home page with blogs and live users
 	//------------------------------------------------------------------------------------------------------------------
 	app.controller('AppHomeController', function($http, $log, $scope,
-			$rootScope, $websocket, $location, $cookies, UserData) {
+			$rootScope, $websocket, $location, $cookies) {
 		var controller = this;
 		$log.debug("AppHomeController...");
 		$http.get('http://localhost:8084/Services/rest/blogs').success(
@@ -105,49 +93,64 @@
 		$http.get('http://localhost:8084/Services/rest/user?signedIn=true').success(
 			function(data, status, headers, config) {
 				$scope.connectedUsers = data;
+				console.log("connectedUsers");
 				console.log(data);
-				$cookies.put('isUserLoggedIn', true);
-				$cookies.put('userName', data.userName);
+				/*$cookies.put('isUserLoggedIn', true);
+				$cookies.put('userName', data.userName);*/
 				$scope.userName = data.userName;
 				$scope.userFirst = data.first;
 				$scope.userLast = data.last;
-				UserData.setFirstName($scope.userFirst);
-				UserData.setId(data._id);
-				UserData.setLastName($scope.userLast);
+				var userObj = {
+                    userName: data.userName,
+                    userFirst: data.first,
+                    userLast: data.last,
+                    userId: data._id
+                };
 
+                var webSocketUserObj = {
+                    name: data.userName,
+                    first: data.first,
+                    fast: data.last,
+                    id: data._id
+                };
+                $cookies.put('userObj', JSON.stringify(userObj));
 				$scope.loading = false;
 				//Setup a websocket connection to server using current host
-				ws = $websocket.$new('ws://'+$location.host()+':'+$location.port()+'/Services/chat', ['binary', 'base64']); // instance of ngWebsocket, handled by $websocket service
+				ws = $websocket.$new('ws://localhost'+':'+ 9271); // instance of ngWebsocket, handled by $websocket service
 				$log.debug("Web socket established...");
 		        ws.$on('$open', function () {
 		            $log.debug('Socket is open');
-		        });
-		        
+		            ws.$emit('UserLogin', webSocketUserObj); // register the user first
+		        });		        
+
 		        ws.$on('$message', function(data){
 		        	 $log.debug('The websocket server has sent the following data:');
 		        	 $log.debug(data);
-		        	 $log.debug(data.messageType);
-		        	 if(data.messageType==="UserLogin"){
+		        	 data = JSON.parse(data);
+		        	 $log.debug(data.event);
+		        	 console.log(data.data.id);
+		        	 if(data.event==="UserLogin"){
 		        		 //Add this user to list of users
 		        		 var found = false;
 		        		 for(var index in $scope.connectedUsers){
-		        			 if($scope.connectedUsers[index].id==data.messageObject.id){
+		        			 if($scope.connectedUsers[index] == data.data.id){
 		        				 found=true;
 		        			 }
 		        		 }
+		        		 console.log($scope.connectedUsers);
 		        		 if(!found){
-		        			 $log.debug("Adding user to list: "+data.messageObject.first);
-		        			 $scope.connectedUsers.push(data.messageObject);
+		        			 $log.debug("Adding user to list: " + data.data.first);
+		        			 $scope.connectedUsers.push(data.data);
 		        			 $scope.$digest();
 		        		 }
-		        	 }else if(data.messageType==="chatMessage"){
+		        	 }else if(data.event==="chatMessage"){
 		        		 //Make sure chat window opensup
 		        		 $scope.showChat=true
 		        		 $log.debug("Updating chat message: ");
-		        		 $log.debug(data.messageObject);
+		        		 $log.debug(data.data);
 		        		 if($scope.chatMessages===undefined)
 		        			 $scope.chatMessages=[];
-		        		 $scope.chatMessages.push(data.messageObject);
+		        		 $scope.chatMessages.push(data.data);
 		        		 $log.debug("Chat Messages: ");
 		        		 $log.debug($scope.chatMessages);
 		        		 $scope.$digest();
@@ -178,8 +181,9 @@
 				//var blogId = comment.blogId;
 				$scope.comment = {};
 				$scope.comment.content = comment.content;
-				$scope.comment.userFirst = UserData.getFirstName();
-				$scope.comment.userLast = UserData.getLastName();
+				var userObj = JSON.parse($cookies.get('userObj'));
+				$scope.comment.userFirst = userObj.userFirst;
+				$scope.comment.userLast = userObj.userLast;
 				$scope.comment.date = new Date();
 				console.log($scope.comment);
 				$http.post('http://localhost:8084/Services/rest/blogs/'+ blogId +'/comments', $scope.comment).success(
@@ -209,6 +213,7 @@
 	//------------------------------------------------------------------------------------------------------------------
 	app.controller('LoginController', function($http, $log, $scope, $location,
 			$rootScope, $cookies, $window) {
+		// $http.defaults.headers.common['Authorization'] = 'Basic ' + 'pavan:pavan123';
 		var controller = this;
 		$scope.isLoadingCompanies = true;
 		$scope.loginError = false;
@@ -229,13 +234,23 @@
 				function(data) {
 					$rootScope.loggedIn = true;
 					$scope.loginError = false;
-					$cookies.put('userLoggedIn', true);
-					$cookies.put('userName', data.user);
-					$window.location = "/";
+					var authdata = window.btoa(data.userName + ':' + data.password);
+ 
+		             $http.defaults.headers.common['Authorization'] = 'Basic ' + authdata; // jshint ignore:line
+		             $cookies.put('user_authdata', authdata);
+		             $cookies.put('userName', data.userName);
+					 $window.location = "/";
 				}).error(function(data, status, headers, config) {
 					console.log("User Not Found....");
 					$scope.loginError = true;
 				});
+		};
+		$scope.logout = function() {
+            $cookies.remove('user_authdata');
+            $cookies.remove('userName');
+            $cookies.remove('userObj');
+            $http.defaults.headers.common.Authorization = 'Basic ';
+            $window.location = "/";
 		};
 		$scope.register = function() {
 			$log.debug("Navigating to register...");
@@ -247,6 +262,11 @@
 			$http.post("http://localhost:8084/Services/rest/user/register", user).success(
 				function(data) {
 					$log.debug(data);
+					var authdata = window.btoa(data.userName + ':' + data.password);
+ 
+		            $http.defaults.headers.common['Authorization'] = 'Basic ' + authdata; // jshint ignore:line
+		            $cookies.put('user_authdata', authdata);
+		            $cookies.put('userName', data.userName);
 					$location.path("/");
 				});
 		}
@@ -290,14 +310,16 @@
 	//------------------------------------------------------------------------------------------------------------------
 	// Controller for new blog post view
 	//------------------------------------------------------------------------------------------------------------------
-	app.controller('BlogController',function($http, $log, $scope, $location, UserData) {
+	app.controller('BlogController',function($http, $log, $scope, $location, $cookies) {
 				var controller = this;
 				$log.debug("Blog controller...");
 				$scope.blog={};
-			    $scope.data = UserData.data;
-				$scope.blog.userFirst = UserData.getFirstName();
-				$scope.blog.userLast = UserData.getLastName();
-				$scope.blog.userId = UserData.getId();
+			    // $scope.data = UserData.data;
+			    console.log('userObj cookie');
+			    var userObj = JSON.parse($cookies.get('userObj'));
+				$scope.blog.userFirst = userObj.userFirst;
+				$scope.blog.userLast = userObj.userLast;
+				$scope.blog.userId = userObj.userId;
 				$scope.blog.date = new Date();
 				$scope.blog.content = 'Blog text here...';
 				$scope.saveBlog = function(blog){
