@@ -2,7 +2,7 @@
 
 	<!-- Blog Post Content Column -->
 	<div class="col-lg-8">
-		<div  ng-repeat="blog in blogs">
+		<div  ng-repeat="blog in blogs | orderBy:'date':true"">
 			<!-- Blog Post -->
 			<!-- Title -->
 			<h1>{{blog.title}}</h1>
