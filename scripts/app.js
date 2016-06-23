@@ -106,7 +106,7 @@
                     userLast: data.last,
                     userId: data._id
                 };
-
+                getSignedInUsers();
                 var webSocketUserObj = {
                     name: data.userName,
                     first: data.first,
@@ -115,57 +115,68 @@
                 };
                 $cookies.put('userObj', JSON.stringify(userObj));
 				$scope.loading = false;
-				//Setup a websocket connection to server using current host
-				ws = $websocket.$new('ws://localhost'+':'+ 9271); // instance of ngWebsocket, handled by $websocket service
-				$log.debug("Web socket established...");
-		        ws.$on('$open', function () {
-		            $log.debug('Socket is open');
-		            ws.$emit('UserLogin', webSocketUserObj); // register the user first
-		        });		        
-
-		        ws.$on('$message', function(data){
-		        	 $log.debug('The websocket server has sent the following data:');
-		        	 $log.debug(data);
-		        	 data = JSON.parse(data);
-		        	 $log.debug(data.event);
-		        	 console.log(data.data.id);
-		        	 if(data.event==="UserLogin"){
-		        		 //Add this user to list of users
-		        		 var found = false;
-		        		 for(var index in $scope.connectedUsers){
-		        			 if($scope.connectedUsers[index] == data.data.id){
-		        				 found=true;
-		        			 }
-		        		 }
-		        		 console.log($scope.connectedUsers);
-		        		 if(!found){
-		        			 $log.debug("Adding user to list: " + data.data.first);
-		        			 $scope.connectedUsers.push(data.data);
-		        			 $scope.$digest();
-		        		 }
-		        	 }else if(data.event==="chatMessage"){
-		        		 //Make sure chat window opensup
-		        		 $scope.showChat=true
-		        		 $log.debug("Updating chat message: ");
-		        		 $log.debug(data.data);
-		        		 if($scope.chatMessages===undefined)
-		        			 $scope.chatMessages=[];
-		        		 $scope.chatMessages.push(data.data);
-		        		 $log.debug("Chat Messages: ");
-		        		 $log.debug($scope.chatMessages);
-		        		 $scope.$digest();
-		        	 }
-		        });
-		        ws.$on('$close', function () {
-		            console.log('Web socket closed');
-		            ws.$close();
-		        });
+				
 			}).error(function(data, status, headers, config) {
 				console.log("Error");
 				console.log(data);
 				$scope.loading = false;
 				$scope.error = status;
 			});
+
+			// get all signedIn users
+			function getSignedInUsers() {
+				$http.get('http://localhost:8084/Services/rest/getSignedInUsers').success(function(data, status, headers, config){
+					$scope.connectedUsers = data;
+					//Setup a websocket connection to server using current host
+					ws = $websocket.$new('ws://localhost'+':'+ 5002); // instance of ngWebsocket, handled by $websocket service
+					$log.debug("Web socket established...");
+			        ws.$on('$open', function () {
+			            $log.debug('Socket is open');
+			           // ws.$emit('UserLogin', webSocketUserObj); // register the user first
+			        });		        
+
+			        ws.$on('$message', function(data){
+			        	 $log.debug('The websocket server has sent the following data:');
+			        	 $log.debug(data);
+			        	 data = JSON.parse(data);
+			        	 if(data.event==="UserLogin"){
+			        		 //Add this user to list of users
+			        		 var found = false;
+			        		 for(var index in $scope.connectedUsers){
+			        			 if($scope.connectedUsers[index] == data.data.id){
+			        				 found=true;
+			        			 }
+			        		 }
+			        		 console.log($scope.connectedUsers);
+			        		 if(!found){
+			        			 $log.debug("Adding user to list: " + data.data.first);
+			        			 $scope.connectedUsers.push(data.data);
+			        			 $scope.$digest();
+			        		 }
+			        	 }else if(data.event==="chatMessage"){
+			        		 //Make sure chat window opensup
+			        		 $scope.showChat=true
+			        		 $log.debug("Updating chat message: ");
+			        		 $log.debug(data.data);
+			        		 if($scope.chatMessages===undefined)
+			        			 $scope.chatMessages=[];
+			        		 $scope.chatMessages.push(data);
+			        		 $log.debug("Chat Messages: ");
+			        		 $log.debug($scope.chatMessages);
+			        		 $scope.$digest();
+			        	 }
+			        });
+			        ws.$on('$close', function () {
+			            console.log('Web socket closed');
+			            ws.$close();
+			        });
+				}).error(function(data, status, headers, config) {
+					console.log("Chat Error");
+					console.log(data);
+					$scope.loading = false;
+					$scope.error = status;
+				});
+			};
 			$scope.tagSearch = function(){
 				$http.get('http://localhost:8084/Services/rest/blogs/'+$scope.searchTag).success(
 					function(data, status, headers, config) {
@@ -203,8 +214,9 @@
 			};
 		
 			$scope.sendMessage = function(chatMessage){
-				$log.debug("Sending "+chatMessage);
-				ws.$emit('chatMessage', chatMessage); // send a message to the websocket server
+				$log.debug("Sending "+ chatMessage);
+				var message = JSON.parse($cookies.get('userObj')).userFirst + ":" + chatMessage;
+				ws.$emit('chatMessage', message); // send a message to the websocket server
 				$scope.chatMessage="";
 			}
 	});
@@ -249,8 +261,14 @@
             $cookies.remove('user_authdata');
             $cookies.remove('userName');
             $cookies.remove('userObj');
-            $http.defaults.headers.common.Authorization = 'Basic ';
-            $window.location = "/";
+            $http.post("http://localhost:8084/Services/rest/user/logout").success(
+				function(data) {
+					$http.defaults.headers.common.Authorization = 'Basic ';
+            		$window.location = "/";
+				}).error(function(data, status, headers, config) {
+					console.log("Logout error..");
+					console.log(data);
+				});
 		};
 		$scope.register = function() {
 			$log.debug("Navigating to register...");
