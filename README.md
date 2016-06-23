@@ -1,8 +1,9 @@
 # blog-app-frontend
 
+Front end for blog app.
 
 Run command: 
 
-    python -m SimpleHTTPServer 5000
+    python server.py 80
     
-Navigate to `0.0.0.0:5000` to see the angular app running.
+Navigate to `0.0.0.0:80` to see the angular app running.
